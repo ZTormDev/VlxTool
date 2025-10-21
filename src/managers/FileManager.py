@@ -17,7 +17,7 @@ class FileManager:
 
     def save_world(self):
         root = Tk(); root.withdraw()
-        filepath = filedialog.asksaveasfilename(defaultextension=".vlx", filetypes=[("Voxelworx file", "*.vlx")], title="Save Voxel World")
+        filepath = filedialog.asksaveasfilename(defaultextension=".vlx", filetypes=[("Voxeland Model", "*.vlx")], title="Save Voxeland Model")
         root.destroy()
         if not filepath: return None
 
@@ -55,7 +55,7 @@ class FileManager:
                 pivot_included = False
 
             with open(filepath, 'w') as f:
-                f.write("# Voxelworx File Format v1.0\n")
+                f.write("# Voxeland Model Format v1.0\n")
                 if has_voxels or pivot_included:
                     aabb = " ".join(map(str, np.round(np.concatenate((min_coords, max_coords)))))
                 else:
@@ -81,7 +81,7 @@ class FileManager:
 
     def load_world(self):
         root = Tk(); root.withdraw()
-        filepath = filedialog.askopenfilename(filetypes=[("Voxelworx file", "*.vlx")], title="Load Voxel World")
+        filepath = filedialog.askopenfilename(filetypes=[("Voxeland Model", "*.vlx")], title="Load Voxeland Model")
         root.destroy()
         if not filepath: return None
         return self.load_world_from_path(filepath)
