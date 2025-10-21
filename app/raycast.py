@@ -29,6 +29,8 @@ def update_raycast(app):
 
     if mx is None or my is None or mx != mx or my != my:
         mx, my = w / 2.0, h / 2.0
+        
+    print(f"Cursor pos: mx={mx}, my={my}, w={w}, h={h}")
 
     ndc_x = (2.0 * mx) / float(w) - 1.0
     ndc_y = 1.0 - (2.0 * my) / float(h)
@@ -51,14 +53,40 @@ def update_raycast(app):
     else:
         world_dir = world_dir / norm
 
-    origin = np.array(app.camera.position, dtype=np.float32) + world_dir * 0.001
+    origin = np.array(app.camera.position, dtype=np.float32)
     ray = Raycast(app.scene.world, origin, world_dir)
     hit, place = ray.step_forward()
 
     if hit:
-        app.hit_voxel_pos, app.place_voxel_pos = hit, place
+        # Decide whether this hit came from an actual voxel inside the
+        # world (world collision) or from intersecting the world AABB
+        # (grid face). For pivot-setting we want the voxel position when
+        # the ray hit a voxel inside the world, not the adjacent "place"
+        # position in front of the face.
+        is_world_hit = False
         try:
-            p = cast(Tuple[int, int, int], place)
+            h = tuple(map(int, hit))
+            total = getattr(app.scene.world, 'total_size', None)
+            if total is None:
+                # If world doesn't expose total_size, assume it's a world hit
+                is_world_hit = True
+            else:
+                # world hit if hit coords are inside [0, total_size-1]
+                is_world_hit = (0 <= h[0] < total and 0 <= h[1] < total and 0 <= h[2] < total)
+        except Exception:
+            is_world_hit = False
+
+        if getattr(app, 'waiting_for_pivot', False) and is_world_hit:
+            # Use the actual voxel position for pivot placement
+            app.hit_voxel_pos = hit
+            app.place_voxel_pos = hit
+        else:
+            app.hit_voxel_pos, app.place_voxel_pos = hit, place
+
+        # Compute normal robustly: prefer (place - hit) when both exist,
+        # otherwise default to zero vector.
+        try:
+            p = cast(Tuple[int, int, int], place if place is not None else hit)
             h = cast(Tuple[int, int, int], hit)
             app.hit_voxel_normal = (p[0] - h[0], p[1] - h[1], p[2] - h[2])
         except Exception:

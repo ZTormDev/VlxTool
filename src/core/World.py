@@ -1,38 +1,45 @@
 # World.py
 import numpy as np
-from src.core.Chunk import Chunk
 
 class World:
-    def __init__(self, chunk_size=32, world_size_in_chunks=1):
-        self.chunk_size = chunk_size
+    def __init__(self, chunk_size=32, world_size_in_chunks=2):
+        self.base_chunk_size = chunk_size
         self.world_size_in_chunks = world_size_in_chunks
-        
+
+        # Total world size in voxels per axis
+        self.total_size = self.base_chunk_size * self.world_size_in_chunks
+
         self.chunks = {}
         self.dirty_chunks = set()
 
-        self.create_test_world()
+        # Lazy import to avoid circulars at module import time
+        from src.core.Chunk import Chunk
+        full_chunk = Chunk(self, (0, 0), self.total_size)
+        self.chunks[(0, 0)] = full_chunk
+        self.dirty_chunks.add(full_chunk)
 
-    def create_test_world(self):
-        for cx in range(self.world_size_in_chunks):
-            for cz in range(self.world_size_in_chunks):
-                chunk_pos = (cx, cz)
-                chunk = Chunk(self, chunk_pos, self.chunk_size)
-                self.chunks[chunk_pos] = chunk
-                self.dirty_chunks.add(chunk)
-
+        # Default pivot: bottom-center of the world in voxel coordinates
+        world_coord_size = self.total_size
+        self.pivot = (world_coord_size // 2, 0, world_coord_size // 2)
+        
     def get_local_pos(self, x, y, z):
-        """ Convierte coordenadas globales a (chunk_pos, local_pos). """
-        chunk_x, local_x = divmod(x, self.chunk_size)
-        chunk_z, local_z = divmod(z, self.chunk_size)
-        return ((chunk_x, chunk_z), (local_x, y, local_z))
+        """Convierte coordenadas globales a (chunk_pos, local_pos).
+
+        Since the world is now represented as a single large chunk located at
+        (0,0) with size == total_size, we return chunk_pos (0,0) and local_pos
+        equal to the global coordinates (assuming they are in-bounds).
+        """
+        # Clamp/normalize to integers
+        lx, ly, lz = int(x), int(y), int(z)
+        return ((0, 0), (lx, ly, lz))
 
     def is_solid(self, x, y, z):
         """ Comprueba si un bloque es sólido en coordenadas globales. """
-        if not (0 <= x < self.chunk_size * self.world_size_in_chunks and \
-                0 <= y < self.chunk_size and \
-                0 <= z < self.chunk_size * self.world_size_in_chunks):
+        # Check bounds against total world size
+        if not (0 <= x < self.total_size and \
+                0 <= y < self.total_size and \
+                0 <= z < self.total_size):
             return False
-
         chunk_pos, local_pos = self.get_local_pos(x, y, z)
         if chunk_pos not in self.chunks:
             return False
@@ -51,7 +58,7 @@ class World:
                 block_id = 0
 
         chunk_pos, local_pos = self.get_local_pos(x, y, z)
-        
+
         if chunk_pos not in self.chunks:
             return
 
@@ -60,23 +67,8 @@ class World:
         # Ensure we pass a numeric block id into the chunk (uint array)
         chunk.set_voxel(local_pos[0], local_pos[1], local_pos[2], block_id)
 
+        # Mark the full chunk dirty (we only have one)
         self.dirty_chunks.add(chunk)
-
-        # Si el bloque está en un borde, marcamos también el chunk vecino
-        lx, ly, lz = local_pos
-        if lx == 0:
-            neighbor_chunk_pos = (chunk_pos[0] - 1, chunk_pos[1])
-            if neighbor_chunk_pos in self.chunks: self.dirty_chunks.add(self.chunks[neighbor_chunk_pos])
-        elif lx == self.chunk_size - 1:
-            neighbor_chunk_pos = (chunk_pos[0] + 1, chunk_pos[1])
-            if neighbor_chunk_pos in self.chunks: self.dirty_chunks.add(self.chunks[neighbor_chunk_pos])
-        
-        if lz == 0:
-            neighbor_chunk_pos = (chunk_pos[0], chunk_pos[1] - 1)
-            if neighbor_chunk_pos in self.chunks: self.dirty_chunks.add(self.chunks[neighbor_chunk_pos])
-        elif lz == self.chunk_size - 1:
-            neighbor_chunk_pos = (chunk_pos[0], chunk_pos[1] + 1)
-            if neighbor_chunk_pos in self.chunks: self.dirty_chunks.add(self.chunks[neighbor_chunk_pos])
         
     def update_dirty_chunks(self):
         """ Reconstruye la malla de todos los chunks marcados como 'sucios'. """
@@ -84,3 +76,17 @@ class World:
         for chunk in list(self.dirty_chunks):
             chunk.build_mesh()
         self.dirty_chunks.clear()
+
+    def get_voxel(self, x, y, z):
+        """Return voxel id at global coordinates (x,y,z). Returns 0 for out-of-bounds or air."""
+        try:
+            if not (0 <= x < self.total_size and 0 <= y < self.total_size and 0 <= z < self.total_size):
+                return 0
+            chunk_pos, local_pos = self.get_local_pos(x, y, z)
+            chunk = self.chunks.get(chunk_pos)
+            if not chunk:
+                return 0
+            lx, ly, lz = local_pos
+            return int(chunk.voxels[lx, ly, lz])
+        except Exception:
+            return 0

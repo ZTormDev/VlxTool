@@ -24,6 +24,7 @@ from src.managers.SettingsManager import SettingsManager
 from src.managers.HistoryManager import HistoryManager
 from src.managers.FileManager import FileManager
 from src.managers.UIManager import UIManager
+from src.managers.ActionHistory import ActionHistory
 
 # modular responsibilities
 from app import window as window_mod
@@ -74,6 +75,8 @@ class App:
 
         # dependent managers
         self.file_manager = FileManager(self.scene.world, self.BlockType, self.history_manager)
+        # Action history for undo/redo of voxel operations
+        self.action_history = ActionHistory()
         # UI manager will be created via ui_mod to allow later swapping/testing
         ui_mod.init_ui(self)
 
@@ -93,6 +96,8 @@ class App:
         self.alt_pressed_last_frame = False
         self.hit_voxel_pos, self.place_voxel_pos, self.hit_voxel_normal = None, None, None
         self.current_filepath = None
+        # Pivot set mode: when True, the next left click will set world.pivot
+        self.waiting_for_pivot = False
 
         # Build placeable blocks defensively. BlockType may be a dynamic Enum type.
         members = getattr(self.BlockType, '__members__', None)
@@ -119,11 +124,13 @@ class App:
         window_mod.initialize_glfw(self)
 
     def initialize_camera(self):
-        world_coord_size = self.scene.world.chunk_size * self.scene.world.world_size_in_chunks #
+        # The World now exposes `total_size` which is the voxel size per axis
+        world_coord_size = getattr(self.scene.world, 'total_size',
+                                   self.scene.world.base_chunk_size * self.scene.world.world_size_in_chunks)
         return Camera(
-            position=[world_coord_size / 2, world_coord_size / 2 + 10, world_coord_size / 2],
+            position=[world_coord_size / 2, world_coord_size / 2, world_coord_size / 2],
             # default target at world center
-            target=[world_coord_size / 2, world_coord_size / 2, world_coord_size / 2]
+            target=[world_coord_size / 2, 5, world_coord_size / 2]
         ) #
 
     def set_callbacks(self):
@@ -164,14 +171,16 @@ class App:
             self.ui_manager.render_ui()
 
     def process_input(self, delta_time):
-        if glfw.get_key(self.window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS and not self.alt_pressed_last_frame:
-            self.is_mouse_captured = not self.is_mouse_captured
-            cursor_mode = GLFW_CURSOR_DISABLED if self.is_mouse_captured else GLFW_CURSOR_NORMAL
-            glfw.set_input_mode(self.window, GLFW_CURSOR, cursor_mode)
-        self.alt_pressed_last_frame = glfw.get_key(self.window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS
-
         if glfw.get_key(self.window, GLFW_KEY_ESCAPE) == GLFW_PRESS:
             glfw.set_window_should_close(self.window, True)
+
+        # Toggle pivot-set mode with the 'P' key
+        try:
+            if glfw.get_key(self.window, glfw.KEY_P) == GLFW_PRESS:
+                # Enter pivot set mode; UIManager will use place_voxel_pos on next left click
+                self.waiting_for_pivot = True
+        except Exception:
+            pass
         
 
     def mouse_look_callback(self, window, xpos, ypos):

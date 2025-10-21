@@ -35,10 +35,42 @@ class FileManager:
                 voxel_data.append((rot_gx, rot_gy, rot_gz, int(block_id)))
         
         try:
+            # If a pivot exists, include it in the AABB calculation. The file
+            # format swaps Y and Z when writing, so apply the same rotation to
+            # the pivot when comparing with min/max.
+            pivot_included = False
+            try:
+                if hasattr(self.world, 'pivot') and self.world.pivot is not None:
+                    px, py, pz = map(int, self.world.pivot)
+                    rot_pivot = np.array([px, pz, py], dtype=np.float64)
+                    if has_voxels:
+                        min_coords = np.minimum(min_coords, rot_pivot)
+                        max_coords = np.maximum(max_coords, rot_pivot)
+                    else:
+                        # No voxels at all; pivot defines the AABB
+                        min_coords = np.minimum(min_coords, rot_pivot)
+                        max_coords = np.maximum(max_coords, rot_pivot)
+                    pivot_included = True
+            except Exception:
+                pivot_included = False
+
             with open(filepath, 'w') as f:
                 f.write("# Voxelworx File Format v1.0\n")
-                aabb = " ".join(map(str, np.round(np.concatenate((min_coords, max_coords))))) if has_voxels else "0 0 0 0 0 0"
-                f.write(f"AABB {aabb}\n# VOXELS: x y z block_type_id\n")
+                if has_voxels or pivot_included:
+                    aabb = " ".join(map(str, np.round(np.concatenate((min_coords, max_coords)))))
+                else:
+                    aabb = "0 0 0 0 0 0"
+                f.write(f"AABB {aabb}\n")
+                # Save pivot information (world-space voxel integer coordinates)
+                try:
+                    if hasattr(self.world, 'pivot') and self.world.pivot is not None:
+                        px, py, pz = self.world.pivot
+                        f.write(f"PIVOT {int(px)} {int(py)} {int(pz)}\n")
+                    else:
+                        f.write("PIVOT 0 0 0\n")
+                except Exception:
+                    f.write("PIVOT 0 0 0\n")
+                f.write("# VOXELS: x y z block_type_id\n")
                 for data in voxel_data: f.write(f"VOXEL {data[0]} {data[1]} {data[2]} {data[3]}\n")
             print(f"World saved to {filepath} with Y-Z axis swapped.")
             self.history_manager.add_entry(filepath)
@@ -73,6 +105,12 @@ class FileManager:
                             self.world.set_voxel(ex, ey, ez, self.BlockType(block_id))
                         except ValueError:
                             print(f"Warning: Unknown block ID '{block_id}'. Skipping.")
+                    elif parts[0] == 'PIVOT' and len(parts) == 4:
+                        try:
+                            px, py, pz = map(int, parts[1:])
+                            self.world.pivot = (px, py, pz)
+                        except Exception:
+                            pass
             print(f"World loaded from {filepath}")
             self.history_manager.add_entry(filepath)
             return filepath

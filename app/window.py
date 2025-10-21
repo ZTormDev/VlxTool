@@ -30,7 +30,8 @@ def initialize_glfw(app):
         sys.exit("Could not create window")
     glfw.make_context_current(app.window)
     glfw.set_input_mode(app.window, GLFW_CURSOR, GLFW_CURSOR_NORMAL)
-
+    # disable resizable
+    glfw.set_window_attrib(app.window, glfw.RESIZABLE, glfw.FALSE)
 
 def initialize_opengl(app):
     # Basic GL state

@@ -27,30 +27,57 @@ class UIManager:
             return
 
         if action == glfw.PRESS:
-            # Left click -> place a voxel at place_voxel_pos (if available)
+            # If ImGui doesn't have the mouse and the app has it captured
             if button == glfw.MOUSE_BUTTON_LEFT and self.app.place_voxel_pos:
-                # Debug: log the click and target
-                try:
-                    print(f"UI: Left click - place_voxel_pos={self.app.place_voxel_pos}, active_block_type={self.app.active_block_type}")
-                except Exception:
-                    pass
-                try:
-                    # World expects an integer value for the block id (or an Enum)
-                    self.app.scene.world.set_voxel(*self.app.place_voxel_pos, self.app.active_block_type)
+                # If waiting for pivot, that takes precedence
+                if getattr(self.app, 'waiting_for_pivot', False):
                     try:
-                        print(f"UI: Requested place at {self.app.place_voxel_pos}")
+                        px, py, pz = tuple(map(int, self.app.place_voxel_pos))
+                        self.app.scene.world.pivot = (px, py, pz)
+                        self.app.waiting_for_pivot = False
+                        try: print(f"Pivot set to {(px,py,pz)}")
+                        except Exception: pass
+                        return
                     except Exception:
-                        pass
+                        self.app.waiting_for_pivot = False
+
+                # Mode-based behavior
+                mode = getattr(self.app, 'edit_mode', 'place')
+                try:
+                    if mode == 'place':
+                        x, y, z = tuple(map(int, self.app.place_voxel_pos))
+                        prev = self.app.scene.world.get_voxel(x, y, z)
+                        new = int(getattr(self.app.active_block_type, 'value', self.app.active_block_type))
+                        self.app.action_history.record({'type':'set', 'pos':(x, y, z), 'prev':prev, 'new':new})
+                        self.app.scene.world.set_voxel(x, y, z, new)
+                    elif mode == 'erase':
+                        x, y, z = tuple(map(int, self.app.place_voxel_pos))
+                        prev = self.app.scene.world.get_voxel(x, y, z)
+                        new = 0
+                        self.app.action_history.record({'type':'set', 'pos':(x, y, z), 'prev':prev, 'new':new})
+                        self.app.scene.world.set_voxel(x, y, z, new)
+                    elif mode == 'paint':
+                        if self.app.hit_voxel_pos and self.app.scene.world.is_solid(*self.app.hit_voxel_pos):
+                            x, y, z = tuple(map(int, self.app.hit_voxel_pos))
+                            prev = self.app.scene.world.get_voxel(x, y, z)
+                            new = int(getattr(self.app.active_block_type, 'value', self.app.active_block_type))
+                            self.app.action_history.record({'type':'set', 'pos':(x, y, z), 'prev':prev, 'new':new})
+                            self.app.scene.world.set_voxel(x, y, z, new)
+                    # Debug logging
+                    try: print(f"UI: {mode} action at {self.app.place_voxel_pos}")
+                    except Exception: pass
                 except Exception as e:
-                    # Log exception so we can see what's going wrong
-                    try:
-                        print(f"UI: Exception while placing voxel: {e}")
-                    except Exception:
-                        pass
-            # Right click -> remove (set to Air) at hit_voxel_pos (if available)
+                    try: print(f"UI: Exception during {mode}: {e}")
+                    except Exception: pass
+            # Right click -> removal disabled (no-op)
             elif button == glfw.MOUSE_BUTTON_RIGHT and self.app.hit_voxel_pos:
+                # Removal via right-click has been intentionally disabled.
+                # Keep this branch as a no-op so the UI still consumes the
+                # event if necessary but does not mutate the world.
                 try:
-                    self.app.scene.world.set_voxel(*self.app.hit_voxel_pos, self.app.BlockType.Air)
+                    # Optional debug logging can be enabled here.
+                    # print("UI: Right click - removal ignored")
+                    pass
                 except Exception:
                     pass
 
@@ -67,7 +94,8 @@ class UIManager:
         # Crosshair removed: we always show the OS cursor. When the user is
         # actively rotating/panning the cursor will be hidden and centered by
         # the application; no overlay crosshair is necessary.
-        self.draw_main_window()
+        self.draw_left_panel()
+        self.draw_right_panel()
         imgui.render() # type: ignore[attr-defined]
         self.renderer.render(imgui.get_draw_data()) # type: ignore[attr-defined]
         
@@ -77,51 +105,109 @@ class UIManager:
         center = (io.display_size.x / 2, io.display_size.y / 2)
         draw_list.add_circle_filled(center[0], center[1], 3.0, imgui.get_color_u32_rgba(1, 1, 1, 0.8)) # type: ignore[attr-defined]
 
-    def draw_main_window(self):
-        imgui.begin("VlxTool") # type: ignore[attr-defined]
-        
-        filename = os.path.basename(self.app.current_filepath) if self.app.current_filepath else "Untitled"
-        imgui.text(f"Current File: {filename}"); imgui.separator() # type: ignore[attr-defined]
+    def draw_left_panel(self):
+        # Parent window - will contain two child panels side by side
+        imgui.begin("VlxTool")
 
-        # Show current raycast/highlight info
-        face_name = self.app.face_name_from_normal()
-        hit = tuple(map(int, self.app.hit_voxel_pos)) if self.app.hit_voxel_pos else "-"
-        place = tuple(map(int, self.app.place_voxel_pos)) if self.app.place_voxel_pos else "-"
-        imgui.text(f"Target Face: {face_name}") # type: ignore[attr-defined]
-        imgui.text(f"Hit Voxel: {hit}") # type: ignore[attr-defined]
-        imgui.text(f"Place Voxel: {place}") # type: ignore[attr-defined]
-        imgui.separator() # type: ignore[attr-defined]
-        
-        block_names = [bt.name for bt in self.app.placeable_blocks]
-        current_idx = self.app.placeable_blocks.index(self.app.active_block_type) if self.app.active_block_type in self.app.placeable_blocks else 0
-        imgui.text("Selected Block:") # type: ignore[attr-defined]
-        changed, new_idx = imgui.combo("##BlockSelector", current_idx, block_names) # type: ignore[attr-defined]
-        if changed: self.app.active_block_type = self.app.placeable_blocks[new_idx] 
-        
-        imgui.separator() # type: ignore[attr-defined]
-        if imgui.button("Save"): self.app.app_save_world() # type: ignore[attr-defined]
-        imgui.same_line() # type: ignore[attr-defined]
-        if imgui.button("Load"): self.app.app_load_world() # type: ignore[attr-defined]
-        imgui.same_line() # type: ignore[attr-defined]
-        if imgui.button("Clear"): self.app.app_clear_world() # type: ignore[attr-defined]
-        
-        imgui.separator(); imgui.text("Recent Files") # type: ignore[attr-defined]
-        imgui.begin_child("HistoryRegion", height=150, border=True) # type: ignore[attr-defined]
+        io = imgui.get_io()
+        total_w = io.display_size.x
+        total_h = io.display_size.y
+
+        left_w = 300
+        right_w = 360
+        center_w = max(0, total_w - left_w - right_w)
+
+        # Left child panel
+        imgui.begin_child("LeftPanel", width=left_w, height=total_h - 120, border=False)
+        imgui.text("Blocks")
+        imgui.separator()
+
+        # Grid of block buttons (show color on hover and tooltip with name)
+        cols = 4
+        sw = 48
+        sh = 48
+        for idx, bt in enumerate(self.app.placeable_blocks):
+            try:
+                # BLOCK_COLORS keys are enum members (or ints). Use the exact key.
+                color = self.app.BLOCK_COLORS.get(bt, None)
+                if color is None:
+                    # try fallback by numeric value
+                    try:
+                        color = self.app.BLOCK_COLORS.get(int(bt), None)
+                    except Exception:
+                        color = None
+                if color is None:
+                    color = (0.6, 0.6, 0.6)
+                # ensure RGB triple of floats in 0..1
+                r, g, b = float(color[0]), float(color[1]), float(color[2])
+                color = (r, g, b)
+            except Exception:
+                color = (0.6, 0.6, 0.6)
+
+            imgui.push_style_color(imgui.COLOR_BUTTON, color[0], color[1], color[2], 1.0)
+            if imgui.button(f"##blk{idx}", sw, sh):
+                self.app.active_block_type = bt
+            imgui.pop_style_color()
+
+            if imgui.is_item_hovered():
+                imgui.set_tooltip(bt.name)
+
+            if (idx % cols) != (cols - 1):
+                imgui.same_line()
+
+        imgui.separator()
+        imgui.text(f"Selected: {self.app.active_block_type.name if self.app.active_block_type else 'None'}")
+        imgui.separator()
+
+        # Action buttons
+        if imgui.button("Place"):
+            self.app.edit_mode = 'place'
+        imgui.same_line()
+        if imgui.button("Erase"):
+            self.app.edit_mode = 'erase'
+        imgui.same_line()
+        if imgui.button("Paint"):
+            self.app.edit_mode = 'paint'
+        imgui.separator()
+        if imgui.button("Undo"):
+            try: self.app.action_history.undo(self.app.scene.world)
+            except Exception: pass
+        imgui.same_line()
+        if imgui.button("Redo"):
+            try: self.app.action_history.redo(self.app.scene.world)
+            except Exception: pass
+        imgui.separator()
+        if imgui.button("Clear"):
+            self.app.app_clear_world()
+        imgui.end_child()
+        imgui.end()
+
+    def draw_right_panel(self):
+        # Separate ImGui window for file/save/history
+        imgui.begin("File & History")
+        filename = os.path.basename(self.app.current_filepath) if self.app.current_filepath else "Untitled"
+        imgui.text(f"Current File: {filename}")
+        imgui.separator()
+
+        if imgui.button("Save"): self.app.app_save_world()
+        imgui.same_line()
+        if imgui.button("Load"): self.app.app_load_world()
+
+        imgui.separator(); imgui.text("Recent Files")
+        total_h = imgui.get_io().display_size.y
+        imgui.begin_child("HistoryRegion", height=total_h - 120, border=True)
         for i, entry in enumerate(list(self.app.history_manager.get_history())):
             filepath = entry.get('path', 'Unknown'); timestamp = entry.get('timestamp')
             time_ago = "(Current)" if filepath == self.app.current_filepath else f"({self.format_time_ago(timestamp)})"
-            
-            imgui.text_unformatted(os.path.basename(filepath)) # type: ignore[attr-defined]
-            if imgui.is_item_hovered(): imgui.set_tooltip(filepath) # type: ignore[attr-defined]
-            
-            imgui.same_line(); imgui.push_style_color(imgui.COLOR_TEXT, 0.6, 0.6, 0.6, 1); imgui.text_unformatted(time_ago); imgui.pop_style_color() # type: ignore[attr-defined]
-            
-            imgui.same_line(imgui.get_window_width() - 130) # type: ignore[attr-defined]
-            if imgui.button(f"Load##{i}"): self.app.app_load_from_history(filepath) # type: ignore[attr-defined]
-            imgui.same_line() # type: ignore[attr-defined]
-            if imgui.button(f"Remove##{i}"): self.app.history_manager.remove_entry(filepath) # type: ignore[attr-defined]
-        imgui.end_child() # type: ignore[attr-defined]
-        imgui.end() # type: ignore[attr-defined]
+            imgui.text_unformatted(os.path.basename(filepath))
+            if imgui.is_item_hovered(): imgui.set_tooltip(filepath)
+            imgui.same_line(); imgui.push_style_color(imgui.COLOR_TEXT, 0.6, 0.6, 0.6, 1); imgui.text_unformatted(time_ago); imgui.pop_style_color()
+            imgui.same_line(imgui.get_window_width() - 130)
+            if imgui.button(f"Load##{i}"): self.app.app_load_from_history(filepath)
+            imgui.same_line()
+            if imgui.button(f"Remove##{i}"): self.app.history_manager.remove_entry(filepath)
+        imgui.end_child()
+        imgui.end()
 
     def shutdown(self):
         self.renderer.shutdown()

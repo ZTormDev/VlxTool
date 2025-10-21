@@ -53,10 +53,10 @@ class Raycast:
         # con el volumen de la cuadrícula (AABB) para permitir colocar
         # bloques en cualquiera de las seis caras del grid box.
 
-        # Construimos los límites del mundo según World
-        world_x = self.world.chunk_size * self.world.world_size_in_chunks
-        world_y = self.world.chunk_size
-        world_z = world_x
+        # Construimos los límites del mundo según World (ahora usamos total_size)
+        world_x = self.world.total_size
+        world_y = self.world.total_size
+        world_z = self.world.total_size
 
         origin = self.ray_origin
         dir = self.ray_direction

@@ -9,8 +9,8 @@ from OpenGL.GL import (
 from OpenGL.GL import GL_VERTEX_SHADER, GL_FRAGMENT_SHADER, GL_FALSE
 
 # --- Screen Dimensions ---
-SCREEN_WIDTH = 1280
-SCREEN_HEIGHT = 720
+SCREEN_WIDTH = 1664
+SCREEN_HEIGHT = 936
 
 # --- Vertex Data Type ---
 # Define el layout de la memoria para un solo vértice.
@@ -32,9 +32,14 @@ def create_shader_program(vertex_filepath, fragment_filepath):
     Devuelve el ID del programa del shader, o 0 si ocurre un error.
     """
     try:
-        with open(vertex_filepath, 'r') as f:
+        # Open shader files explicitly as UTF-8 and replace any undecodable
+        # bytes. Some shader files may contain bytes outside the system
+        # default encoding on Windows which would raise a UnicodeDecodeError
+        # when read with the default cp1252 codec. Using errors='replace'
+        # avoids the crash while preserving the text for compilation.
+        with open(vertex_filepath, 'r', encoding='utf-8', errors='replace') as f:
             vertex_src = f.read()
-        with open(fragment_filepath, 'r') as f:
+        with open(fragment_filepath, 'r', encoding='utf-8', errors='replace') as f:
             fragment_src = f.read()
     except FileNotFoundError as e:
         print(f"Error: No se pudo encontrar el archivo del shader. {e}")

@@ -22,15 +22,15 @@ class Camera:
             dir_norm = np.array([0.0, 0.0, 1.0], dtype=np.float32)
         # derive yaw/pitch from normalized direction vector
         nx, ny, nz = dir_norm
-        # default distance (units): set to 32 as requested
-        self.distance = 32.0
+        # default distance (units): set to 16 as requested
+        self.distance = 16.0
         # yaw: azimuth around Y, pitch: elevation
         # Use fixed defaults so the camera doesn't start looking straight down
         self.yaw = 0.0
         self.pitch = 0.0
 
         # sensitivities and limits
-        self.orbit_sensitivity = 0.2
+        self.orbit_sensitivity = 0.25
         self.zoom_sensitivity = 1.0
         self.pan_sensitivity = 0.002
         self.min_distance = 1.0

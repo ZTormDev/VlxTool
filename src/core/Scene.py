@@ -11,10 +11,11 @@ from src.core.World import World
 from src.ui.Grid import Grid
 from src.core.Sun import Sun
 from src.ui.Highlight import Highlight
+from src.ui.PivotGizmo import PivotGizmo
 
 class Scene:
     def __init__(self, block_type_enum, block_colors_dict):
-        self.world_size = 1
+        self.world_size = 3
         chunk_dimension = 32
         world_coord_size = chunk_dimension * self.world_size
 
@@ -22,6 +23,7 @@ class Scene:
         self.grid = Grid(width=world_coord_size, depth=world_coord_size, height=world_coord_size)
         self.sun = Sun()
         self.highlighter = Highlight()
+        self.pivot_gizmo = PivotGizmo()
         
         self.max_block_types = 16
         self.block_palette_array = np.zeros((self.max_block_types, 3), dtype=np.float32)
@@ -53,6 +55,14 @@ class Scene:
         if hit_voxel_pos and hit_voxel_normal:
             identity_matrix = pyrr.matrix44.create_identity(dtype=np.float32)
             self.highlighter.render(projection_matrix, view_matrix, identity_matrix, hit_voxel_pos, hit_voxel_normal)
+
+        # Render pivot gizmo using the world's pivot
+        try:
+            pivot = self.world.pivot
+            if pivot is not None:
+                self.pivot_gizmo.render(projection_matrix, view_matrix, pivot)
+        except Exception:
+            pass
 
     def destroy(self):
         self.grid.destroy()
