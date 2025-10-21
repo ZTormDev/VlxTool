@@ -9,7 +9,6 @@ from OpenGL.GL import glBindVertexArray
 
 from src.core.World import World
 from src.ui.Grid import Grid
-from src.ui.Skybox import Skybox
 from src.core.Sun import Sun
 from src.ui.Highlight import Highlight
 
@@ -21,7 +20,6 @@ class Scene:
 
         self.world = World(chunk_size=chunk_dimension, world_size_in_chunks=self.world_size)
         self.grid = Grid(width=world_coord_size, depth=world_coord_size, height=world_coord_size)
-        self.skybox = Skybox()
         self.sun = Sun()
         self.highlighter = Highlight()
         
@@ -32,8 +30,6 @@ class Scene:
                 self.block_palette_array[int(block_type)] = color
 
     def render(self, projection_matrix, view_matrix, voxel_shader, hit_voxel_pos, hit_voxel_normal):
-        # Render Skybox y Grid
-        self.skybox.render(projection_matrix, view_matrix)
         self.grid.render(projection_matrix, view_matrix)
         
         # Render Voxel World
