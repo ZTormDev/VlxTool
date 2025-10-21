@@ -1,7 +1,11 @@
 # src/Scene.py
 import numpy as np
 import pyrr
-from OpenGL.GL import *
+from OpenGL.GL import (
+    glUseProgram, glUniform3fv, glGetUniformLocation, glUniformMatrix4fv, glEnable, glDrawElements,
+    GL_FALSE, GL_TRIANGLES, GL_UNSIGNED_INT, GL_CULL_FACE
+)
+from OpenGL.GL import glBindVertexArray
 
 from src.World import World
 from src.Grid import Grid

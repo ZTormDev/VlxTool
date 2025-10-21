@@ -1,7 +1,12 @@
 # src/Config.py
 import os
 import numpy as np
-from OpenGL.GL import *
+from OpenGL.GL import (
+    glCreateShader, glShaderSource, glCompileShader, glGetShaderiv, GL_COMPILE_STATUS,
+    glGetShaderInfoLog, glDeleteShader, glCreateProgram, glAttachShader, glLinkProgram,
+    glGetProgramiv, GL_LINK_STATUS, glGetProgramInfoLog, glDeleteProgram
+)
+from OpenGL.GL import GL_VERTEX_SHADER, GL_FRAGMENT_SHADER, GL_FALSE
 
 # --- Screen Dimensions ---
 SCREEN_WIDTH = 1280

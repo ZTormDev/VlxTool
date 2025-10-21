@@ -1,6 +1,12 @@
 # Skybox.py
 import os
-from OpenGL.GL import *
+from OpenGL.GL import (
+    glGenVertexArrays, glBindVertexArray, glGenBuffers, glBindBuffer, glBufferData,
+    glEnableVertexAttribArray, glVertexAttribPointer, glBindVertexArray, glUseProgram,
+    glUniformMatrix4fv, glGetUniformLocation, glDrawArrays, glDepthFunc, GL_LEQUAL, GL_LESS,
+    GL_ARRAY_BUFFER, GL_STATIC_DRAW, GL_FLOAT, GL_TRIANGLES
+)
+from OpenGL.GL import GL_FALSE
 import numpy as np
 import ctypes
 from src.Config import create_shader_program

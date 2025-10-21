@@ -1,6 +1,15 @@
 # Highlight.py
 import os
-from OpenGL.GL import *
+from OpenGL.GL import (
+    glGenVertexArrays, glBindVertexArray, glGenBuffers, glBindBuffer, glBufferData,
+    glEnableVertexAttribArray, glVertexAttribPointer, glBindVertexArray, glUseProgram,
+    glDisable, glEnable, glBlendFunc, glDrawElements, GL_ARRAY_BUFFER, GL_STATIC_DRAW,
+    GL_FLOAT, GL_FALSE, GL_CULL_FACE, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_TRIANGLES,
+    GL_UNSIGNED_INT
+)
+from OpenGL.GL import (
+    glUniformMatrix4fv, glGetUniformLocation, GL_ELEMENT_ARRAY_BUFFER, GL_BLEND
+)
 import numpy as np
 import ctypes
 import pyrr

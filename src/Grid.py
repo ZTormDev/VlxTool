@@ -1,7 +1,14 @@
 # src/Grid.py
 import os
 import numpy as np
-from OpenGL.GL import *
+from OpenGL.GL import (
+    glGenVertexArrays, glBindVertexArray, glGenBuffers, glBindBuffer, glBufferData,
+    glEnableVertexAttribArray, glVertexAttribPointer, glDisable, glDrawArrays,
+    glUseProgram, glUniformMatrix4fv, glGetUniformLocation, glDeleteVertexArrays,
+    glDeleteBuffers, glDeleteProgram, glEnable, glBlendFunc,
+    GL_ARRAY_BUFFER, GL_STATIC_DRAW, GL_FLOAT, GL_FALSE,
+    GL_LINES, GL_BLEND, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_CULL_FACE
+)
 import ctypes
 import pyrr
 from src.Config import create_shader_program

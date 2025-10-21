@@ -1,7 +1,12 @@
 # Mesh.py
-from src.Config import *
+from src.Config import data_type_vertex
 import numpy as np
-from OpenGL.GL import *
+from OpenGL.GL import (
+    glGenVertexArrays, glBindVertexArray, glGenBuffers, glBindBuffer, glBufferData,
+    glEnableVertexAttribArray, glVertexAttribPointer, glVertexAttribIPointer, glDeleteVertexArrays,
+    GL_ARRAY_BUFFER, GL_STATIC_DRAW, GL_FLOAT, GL_UNSIGNED_INT
+)
+from OpenGL.GL import GL_ELEMENT_ARRAY_BUFFER, GL_FALSE
 import ctypes
 
 class Mesh:

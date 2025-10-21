@@ -2,10 +2,24 @@
 import os
 import sys
 import numpy as np
+from typing import Any, cast, Tuple
 import pyrr
 import glfw
 import imgui
-from OpenGL.GL import *
+from OpenGL.GL import (
+    glClear,
+    glEnable,
+    glCullFace,
+    glFrontFace,
+    glDeleteProgram,
+    glClearColor,
+    GL_COLOR_BUFFER_BIT,
+    GL_DEPTH_BUFFER_BIT,
+    GL_DEPTH_TEST,
+    GL_CULL_FACE,
+    GL_BACK,
+    GL_CW,
+)
 from tkinter import Tk, filedialog
 
 # Importaciones de los módulos del proyecto
@@ -62,7 +76,19 @@ class App:
         self.alt_pressed_last_frame = False
         self.hit_voxel_pos, self.place_voxel_pos, self.hit_voxel_normal = None, None, None
         self.current_filepath = None
-        self.placeable_blocks = [bt for bt in self.BlockType if bt != self.BlockType.Air]
+        # Build placeable blocks defensively. BlockType may be a dynamic Enum type.
+        members = getattr(self.BlockType, '__members__', None)
+        if isinstance(members, dict):
+            # __members__ preserves declaration order
+            self.placeable_blocks = [getattr(self.BlockType, name) for name in members if name != 'Air']
+        else:
+            # Fallback: attempt to get an iterator at runtime; silence the type-checker
+            try:
+                iterator = iter(self.BlockType)  # type: ignore[arg-type]
+            except Exception:
+                self.placeable_blocks = []
+            else:
+                self.placeable_blocks = [bt for bt in iterator if getattr(bt, 'name', None) != 'Air']
         self.active_block_type = self.placeable_blocks[0] if self.placeable_blocks else None
 
         self.initialize_opengl()
@@ -113,10 +139,11 @@ class App:
             glfw.swap_buffers(self.window)
 
     def render_frame(self):
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        mask = GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT  # type: ignore[arg-type]
+        glClear(mask)
         view = self.camera.get_view_matrix() #
         proj = pyrr.matrix44.create_perspective_projection(75, SCREEN_WIDTH/SCREEN_HEIGHT, 0.1, 512, np.float32)
-        
+
         # La clase Scene se encarga de toda la lógica de renderizado
         self.scene.render(proj, view, self.voxel_shader, self.hit_voxel_pos, self.hit_voxel_normal) #
         
@@ -162,12 +189,18 @@ class App:
             self.hit_voxel_pos = None
             return
             
-        ray = Raycast(self.scene.world, self.camera.position, self.camera.front) #
-        hit, place = ray.step_forward() #
+        ray = Raycast(self.scene.world, self.camera.position, self.camera.front)
+        hit, place = ray.step_forward()
 
         if hit:
             self.hit_voxel_pos, self.place_voxel_pos = hit, place
-            self.hit_voxel_normal = tuple(np.subtract(place, hit))
+            # cast to Tuple[int,int,int] for the type checker then compute normal
+            try:
+                p = cast(Tuple[int, int, int], place)
+                h = cast(Tuple[int, int, int], hit)
+                self.hit_voxel_normal = (p[0] - h[0], p[1] - h[1], p[2] - h[2])
+            except Exception:
+                self.hit_voxel_normal = (0, 0, 0)
         else:
             # Si no hay hit, reseteamos las posiciones
             self.hit_voxel_pos, self.place_voxel_pos, self.hit_voxel_normal = None, None, None
@@ -187,13 +220,13 @@ class App:
 
     # --- Funciones de la Aplicación para la UI ---
     def app_save_world(self):
-        if path := self.file_manager.save_world(): self.current_filepath = path #
+        if path := self.file_manager.save_world(): self.current_filepath = path
     def app_load_world(self):
-        if path := self.file_manager.load_world(): self.current_filepath = path #
+        if path := self.file_manager.load_world(): self.current_filepath = path
     def app_load_from_history(self, path):
-        if loaded_path := self.file_manager.load_world_from_path(path): self.current_filepath = loaded_path #
+        if loaded_path := self.file_manager.load_world_from_path(path): self.current_filepath = loaded_path
     def app_clear_world(self):
-        self.file_manager.clear_world(); self.current_filepath = None #
+        self.file_manager.clear_world(); self.current_filepath = None
 
     def prompt_for_hpp_file(self):
         root = Tk(); root.withdraw()

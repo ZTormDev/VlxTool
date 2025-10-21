@@ -5,7 +5,7 @@ class SettingsManager:
     def __init__(self):
         app_data_path = os.getenv('LOCALAPPDATA', os.path.expanduser("~"))
         self.settings_dir = os.path.join(app_data_path, 'VlxTool')
-        self.settings_path = os.path.join(self.settings_dir, 'VlxToolSettings.json')
+        self.settings_path = os.path.join(self.settings_dir, 'Settings.json')
 
     def load_settings(self):
         try:
