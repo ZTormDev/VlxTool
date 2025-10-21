@@ -91,26 +91,107 @@ class FileManager:
             print(f"Error: File not found at '{filepath}'. Removing from history.")
             self.history_manager.remove_entry(filepath)
             return None
-
+        # Read file first and collect voxel entries so we can compute AABB and
+        # derive a translation that centers the model horizontally and places
+        # its bottom at y=0 (center-bottom of the editor).
         self.clear_world()
         try:
+            voxels = []  # list of (x,y,z,block_id) in world/global coords
+            file_pivot = None
             with open(filepath, 'r') as f:
                 for line in f:
-                    if not line.strip() or line.startswith('#'): continue
+                    if not line.strip() or line.startswith('#'):
+                        continue
                     parts = line.split()
                     if parts[0] == 'VOXEL' and len(parts) == 5:
                         fx, fy, fz, block_id = map(int, parts[1:])
+                        # The file format swaps Y and Z when writing; apply same
+                        # rotation when reading (file: fx,fy,fz -> world: x=fx, y=fz, z=fy)
                         ex, ey, ez = fx, fz, fy
-                        try:
-                            self.world.set_voxel(ex, ey, ez, self.BlockType(block_id))
-                        except ValueError:
-                            print(f"Warning: Unknown block ID '{block_id}'. Skipping.")
+                        voxels.append((ex, ey, ez, int(block_id)))
                     elif parts[0] == 'PIVOT' and len(parts) == 4:
                         try:
                             px, py, pz = map(int, parts[1:])
-                            self.world.pivot = (px, py, pz)
+                            file_pivot = (px, py, pz)
                         except Exception:
-                            pass
+                            file_pivot = None
+
+            if not voxels and file_pivot is None:
+                # Nothing to place; still register history and return
+                print(f"World loaded from {filepath} (empty)")
+                self.history_manager.add_entry(filepath)
+                return filepath
+
+            # Compute AABB from collected voxels (and include pivot if present)
+            import numpy as _np
+            coords = _np.array([[v[0], v[1], v[2]] for v in voxels], dtype=_np.int64) if voxels else _np.zeros((0,3), dtype=_np.int64)
+            if file_pivot is not None:
+                # Include pivot in AABB calculation
+                px, py, pz = file_pivot
+                pivot_arr = _np.array([[int(px), int(py), int(pz)]], dtype=_np.int64)
+                coords = _np.vstack([coords, pivot_arr]) if coords.size else pivot_arr
+
+            min_coords = coords.min(axis=0) if coords.size else _np.array([0,0,0], dtype=_np.int64)
+            max_coords = coords.max(axis=0) if coords.size else _np.array([0,0,0], dtype=_np.int64)
+
+            # Determine translation: center model X/Z to world center, place model bottom at y=0
+            world_size = getattr(self.world, 'total_size', None)
+            if world_size is None:
+                world_size = getattr(self.world, 'base_chunk_size', 32) * getattr(self.world, 'world_size_in_chunks', 2)
+
+            # Use integer world center
+            world_center = _np.array([world_size // 2, 0, world_size // 2], dtype=_np.int64)
+
+            model_center_xz = _np.array([(min_coords[0] + max_coords[0]) / 2.0, (min_coords[2] + max_coords[2]) / 2.0])
+            # translation x and z to place model center at world center
+            tx = int(round(world_center[0] - model_center_xz[0]))
+            tz = int(round(world_center[2] - model_center_xz[1]))
+            # translation y to move min_y to 0 (bring bottom to y=0)
+            ty = int(-min_coords[1])
+
+            # Apply tentative translation and ensure the translated AABB fits inside the world
+            translated_min = min_coords + _np.array([tx, ty, tz], dtype=_np.int64)
+            translated_max = max_coords + _np.array([tx, ty, tz], dtype=_np.int64)
+
+            # If out of bounds, shift to fit within [0, world_size-1]
+            adjust = _np.array([0,0,0], dtype=_np.int64)
+            if translated_min[0] < 0:
+                adjust[0] = -translated_min[0]
+            if translated_min[1] < 0:
+                adjust[1] = -translated_min[1]
+            if translated_min[2] < 0:
+                adjust[2] = -translated_min[2]
+            if translated_max[0] >= world_size:
+                adjust[0] = min(adjust[0], world_size - 1 - translated_max[0])
+            if translated_max[1] >= world_size:
+                adjust[1] = min(adjust[1], world_size - 1 - translated_max[1])
+            if translated_max[2] >= world_size:
+                adjust[2] = min(adjust[2], world_size - 1 - translated_max[2])
+
+            tx += int(adjust[0]); ty += int(adjust[1]); tz += int(adjust[2])
+
+            # Place voxels with applied translation
+            for ex, ey, ez, block_id in voxels:
+                nx = int(ex + tx); ny = int(ey + ty); nz = int(ez + tz)
+                # Bounds check to be defensive
+                if not (0 <= nx < world_size and 0 <= ny < world_size and 0 <= nz < world_size):
+                    # Skip voxels that still fall outside the world after adjustment
+                    continue
+                try:
+                    self.world.set_voxel(nx, ny, nz, self.BlockType(block_id))
+                except ValueError:
+                    print(f"Warning: Unknown block ID '{block_id}'. Skipping.")
+
+            # Translate and set pivot if present
+            if file_pivot is not None:
+                px, py, pz = file_pivot
+                new_px = int(px + tx); new_py = int(py + ty); new_pz = int(pz + tz)
+                # Clamp pivot inside world
+                new_px = max(0, min(world_size - 1, new_px))
+                new_py = max(0, min(world_size - 1, new_py))
+                new_pz = max(0, min(world_size - 1, new_pz))
+                self.world.pivot = (new_px, new_py, new_pz)
+
             print(f"World loaded from {filepath}")
             self.history_manager.add_entry(filepath)
             return filepath
