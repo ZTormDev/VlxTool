@@ -7,11 +7,11 @@ from OpenGL.GL import (
 )
 from OpenGL.GL import glBindVertexArray
 
-from src.World import World
-from src.Grid import Grid
-from src.Skybox import Skybox
-from src.Sun import Sun
-from src.Highlight import Highlight
+from src.core.World import World
+from src.ui.Grid import Grid
+from src.ui.Skybox import Skybox
+from src.core.Sun import Sun
+from src.ui.Highlight import Highlight
 
 class Scene:
     def __init__(self, block_type_enum, block_colors_dict):

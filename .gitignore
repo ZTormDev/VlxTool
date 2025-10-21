@@ -1,3 +1,7 @@
 **/__pycache__/
 ./.vscode
 ./dist
+./build
+./__pypackages__
+./.venv/
+./imgui.ini

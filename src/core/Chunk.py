@@ -1,7 +1,7 @@
 # src/Chunk.py
 import numpy as np
-from src.Config import data_type_vertex
-from src.Mesh import Mesh
+from src.utils.Config import data_type_vertex
+from src.core.Mesh import Mesh
 import pyrr
 
 class Chunk:
@@ -32,9 +32,42 @@ class Chunk:
         return (self.position[0] * self.size + x, y, self.position[1] * self.size + z)
 
     def calculate_ao(self, side1, side2, corner):
-        if side1 and side2: return 0.5
-        occlusion = 3 - (side1 + side2 + corner)
-        return (occlusion / 3.0) * 0.5 + 0.5
+        """
+        Improved Ambient Occlusion calculation.
+
+        side1, side2, corner are truthy values (0/1 or bool). We compute a
+        higher-quality AO value by:
+        - computing the normalized un-occluded amount (raw)
+        - applying a mild ease (square) to increase contrast smoothly
+        - remapping into a comfortable range so faces never go fully black
+
+        Returns a float in roughly [0.35, 1.0].
+        """
+        # normalize inputs to 0/1 integers
+        s = 1 if side1 else 0
+        t = 1 if side2 else 0
+        c = 1 if corner else 0
+
+        # Standard voxel AO rule:
+        # - adjacent sides (s and t) each contribute 1 when occupied
+        # - the corner only contributes if BOTH adjacent sides are occupied
+        # This prevents the corner from darkening a vertex when it's isolated
+        # (which looks visually incorrect).
+        corner_contrib = c if (s and t) else 0
+        occlusion_count = s + t + corner_contrib  # 0..3
+
+        # raw: 1.0 = fully open, 0.0 = fully occluded
+        raw = 1.0 - (occlusion_count / 3.0)
+
+        # apply a mild ease to make AO darker where there is more occlusion
+        eased = raw * raw
+
+        # keep AO in a non-extreme range so lighting doesn't go fully black;
+        # tweak `min_ao` to control darkness strength
+        min_ao = 0.35
+        ao = min_ao + eased * (1.0 - min_ao)
+
+        return float(ao)
 
     def build_mesh(self):
         vertex_list, index_list = [], []

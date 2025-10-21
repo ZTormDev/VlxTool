@@ -1,6 +1,6 @@
 # World.py
 import numpy as np
-from src.Chunk import Chunk
+from src.core.Chunk import Chunk
 
 class World:
     def __init__(self, chunk_size=32, world_size_in_chunks=1):
@@ -40,17 +40,25 @@ class World:
 
     def set_voxel(self, x, y, z, block_type):
         """ Coloca un bloque y marca los chunks afectados como 'sucios'. """
+        # Accept either an Enum-like block_type with a `.value` attribute or a plain int
+        try:
+            block_id = block_type.value if hasattr(block_type, 'value') else int(block_type)
+        except Exception:
+            # Fallback: try to coerce to int, else default to 0 (Air)
+            try:
+                block_id = int(block_type)
+            except Exception:
+                block_id = 0
+
         chunk_pos, local_pos = self.get_local_pos(x, y, z)
         
         if chunk_pos not in self.chunks:
             return
 
         chunk = self.chunks[chunk_pos]
-        
-        # --- INICIO DE LA CORRECCIÓN ---
-        # Asegúrate de pasar el valor numérico (entero) del tipo de bloque, no el objeto Enum completo.
-        chunk.set_voxel(local_pos[0], local_pos[1], local_pos[2], block_type.value)
-        # --- FIN DE LA CORRECCIÓN ---
+
+        # Ensure we pass a numeric block id into the chunk (uint array)
+        chunk.set_voxel(local_pos[0], local_pos[1], local_pos[2], block_id)
 
         self.dirty_chunks.add(chunk)
 

@@ -9,11 +9,11 @@ from OpenGL.GL import (
 from OpenGL.GL import GL_FALSE
 import numpy as np
 import ctypes
-from src.Config import create_shader_program
+from src.utils.Config import create_shader_program
 
 class Skybox:
     def __init__(self):
-        program_folder = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
+        program_folder = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + "/"
         self.program = create_shader_program(program_folder + "shaders/skybox.vert", program_folder + "shaders/skybox.frag")
         self.vao, self.vbo = self.get_vao()
 

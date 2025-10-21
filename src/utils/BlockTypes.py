@@ -1,5 +1,5 @@
 # src/BlockTypes.py
-from src.HppParser import parse_block_types_hpp
+from src.utils.HppParser import parse_block_types_hpp
 from enum import IntEnum
 from typing import Tuple, Dict, Any, Optional, cast
 

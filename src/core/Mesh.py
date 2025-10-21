@@ -1,5 +1,5 @@
 # Mesh.py
-from src.Config import data_type_vertex
+from src.utils.Config import data_type_vertex
 import numpy as np
 from OpenGL.GL import (
     glGenVertexArrays, glBindVertexArray, glGenBuffers, glBindBuffer, glBufferData,

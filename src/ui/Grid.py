@@ -11,11 +11,11 @@ from OpenGL.GL import (
 )
 import ctypes
 import pyrr
-from src.Config import create_shader_program
+from src.utils.Config import create_shader_program
 
 class Grid:
     def __init__(self, width, depth, height):
-        program_folder = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
+        program_folder = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + "/"
         self.program = create_shader_program(program_folder + "shaders/grid.vert", program_folder + "shaders/grid.frag")
 
         vertices = []

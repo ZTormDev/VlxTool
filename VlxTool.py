@@ -2,10 +2,12 @@
 import os
 import sys
 import numpy as np
-from typing import Any, cast, Tuple
 import pyrr
 import glfw
-import imgui
+import imgui  # type: ignore
+import math
+from typing import cast, Tuple
+
 from OpenGL.GL import (
     glClear,
     glEnable,
@@ -23,15 +25,15 @@ from OpenGL.GL import (
 from tkinter import Tk, filedialog
 
 # Importaciones de los módulos del proyecto
-from src.Camera import Camera
-from src.Scene import Scene
-from src.Config import SCREEN_WIDTH, SCREEN_HEIGHT, create_shader_program
-from src.BlockTypes import load_from_hpp
-from src.Raycast import Raycast
-from src.SettingsManager import SettingsManager
-from src.HistoryManager import HistoryManager
-from src.FileManager import FileManager
-from src.UIManager import UIManager
+from src.core.Camera import Camera
+from src.core.Scene import Scene
+from src.utils.Config import SCREEN_WIDTH, SCREEN_HEIGHT, create_shader_program
+from src.utils.BlockTypes import load_from_hpp
+from src.core.Raycast import Raycast
+from src.managers.SettingsManager import SettingsManager
+from src.managers.HistoryManager import HistoryManager
+from src.managers.FileManager import FileManager
+from src.managers.UIManager import UIManager
 
 # Constantes de GLFW para mayor claridad
 from glfw.GLFW import (
@@ -47,35 +49,49 @@ from glfw.GLFW import (
 class App:
     def __init__(self):
         # --- Inicialización de Gestores y Configuración ---
-        self.settings_manager = SettingsManager() #
-        self.history_manager = HistoryManager(self.settings_manager.settings_dir) #
-        
-        settings = self.settings_manager.load_settings() #
+        self.settings_manager = SettingsManager()
+        self.history_manager = HistoryManager(self.settings_manager.settings_dir)
+
+        settings = self.settings_manager.load_settings()
         hpp_path = settings.get('hpp_path') if settings else None
         if not hpp_path:
             hpp_path = self.prompt_for_hpp_file()
-            if hpp_path: self.settings_manager.save_settings({'hpp_path': hpp_path}) #
-        if not hpp_path: sys.exit("No .hpp file selected.")
+            if hpp_path:
+                self.settings_manager.save_settings({'hpp_path': hpp_path})
+        if not hpp_path:
+            sys.exit("No .hpp file selected.")
 
         # --- Inicialización de Componentes Gráficos y del Mundo ---
         self.initialize_glfw()
-        self.BlockType, self.BLOCK_COLORS = load_from_hpp(hpp_path) #
-        imgui.create_context()
-        
+        self.BlockType, self.BLOCK_COLORS = load_from_hpp(hpp_path)
+        imgui.create_context()  # type: ignore[attr-defined]
+
         # La clase Scene ahora se encarga de crear el mundo, la rejilla, etc.
-        self.scene = Scene(self.BlockType, self.BLOCK_COLORS) #
-        
+        self.scene = Scene(self.BlockType, self.BLOCK_COLORS)
+
         self.camera = self.initialize_camera()
-        
+
         # --- Inicialización de Gestores Dependientes ---
-        self.file_manager = FileManager(self.scene.world, self.BlockType, self.history_manager) #
-        self.ui_manager = UIManager(self.window, self) #
+        self.file_manager = FileManager(self.scene.world, self.BlockType, self.history_manager)
+        self.ui_manager = UIManager(self.window, self)
 
         # --- Estado de la Aplicación ---
+        # Keep cursor visible by default. We'll hide & center it only while
+        # the user is actively rotating (right) or panning (middle).
         self.is_mouse_captured = True
+        # For orbit/pan controls when mouse is released
+        self.last_cursor_pos = None
+        self.middle_button_down = False
+        self.right_button_down = False
+        # Flag used to ignore the first cursor delta after we programmatically
+        # center the cursor to avoid a large jump in camera movement.
+        self.just_centered = False
+        # Disable keyboard movement by default (MagicaVoxel-like)
+        self.enable_keyboard_movement = False
         self.alt_pressed_last_frame = False
         self.hit_voxel_pos, self.place_voxel_pos, self.hit_voxel_normal = None, None, None
         self.current_filepath = None
+
         # Build placeable blocks defensively. BlockType may be a dynamic Enum type.
         members = getattr(self.BlockType, '__members__', None)
         if isinstance(members, dict):
@@ -89,6 +105,7 @@ class App:
                 self.placeable_blocks = []
             else:
                 self.placeable_blocks = [bt for bt in iterator if getattr(bt, 'name', None) != 'Air']
+
         self.active_block_type = self.placeable_blocks[0] if self.placeable_blocks else None
 
         self.initialize_opengl()
@@ -100,18 +117,23 @@ class App:
         glfw.window_hint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); glfw.window_hint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE)
         self.window = glfw.create_window(SCREEN_WIDTH, SCREEN_HEIGHT, "VlxTool", None, None)
         if not self.window: glfw.terminate(); sys.exit("Could not create window")
-        glfw.make_context_current(self.window); glfw.set_input_mode(self.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED)
+        # Start with a normal, visible cursor. Individual mouse-button handlers
+        # will hide/center the cursor while the user is interacting.
+        glfw.make_context_current(self.window)
+        glfw.set_input_mode(self.window, GLFW_CURSOR, GLFW_CURSOR_NORMAL)
 
     def initialize_camera(self):
         world_coord_size = self.scene.world.chunk_size * self.scene.world.world_size_in_chunks #
         return Camera(
             position=[world_coord_size / 2, world_coord_size / 2 + 10, world_coord_size / 2],
-            target=[0, 0, 0]
+            # default target at world center
+            target=[world_coord_size / 2, world_coord_size / 2, world_coord_size / 2]
         ) #
 
     def set_callbacks(self):
         glfw.set_cursor_pos_callback(self.window, self.mouse_look_callback)
         glfw.set_scroll_callback(self.window, self.scroll_callback)
+        glfw.set_mouse_button_callback(self.window, self.mouse_button_callback)
         
     def initialize_opengl(self):
         glClearColor(0.1, 0.2, 0.5, 1); glEnable(GL_DEPTH_TEST); glEnable(GL_CULL_FACE)
@@ -142,7 +164,7 @@ class App:
         mask = GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT  # type: ignore[arg-type]
         glClear(mask)
         view = self.camera.get_view_matrix() #
-        proj = pyrr.matrix44.create_perspective_projection(75, SCREEN_WIDTH/SCREEN_HEIGHT, 0.1, 512, np.float32)
+        proj = pyrr.matrix44.create_perspective_projection(75, SCREEN_WIDTH/SCREEN_HEIGHT, 0.1, 1024, np.float32)
 
         # La clase Scene se encarga de toda la lógica de renderizado
         self.scene.render(proj, view, self.voxel_shader, self.hit_voxel_pos, self.hit_voxel_normal) #
@@ -159,37 +181,167 @@ class App:
         if glfw.get_key(self.window, GLFW_KEY_ESCAPE) == GLFW_PRESS:
             glfw.set_window_should_close(self.window, True)
         
-        sprint = glfw.get_key(self.window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS
-        key_map = {
-            GLFW_KEY_W: "FORWARD", GLFW_KEY_S: "BACKWARD", 
-            GLFW_KEY_A: "LEFT", GLFW_KEY_D: "RIGHT",
-            GLFW_KEY_SPACE: "UP", GLFW_KEY_LEFT_CONTROL: "DOWN"
-        }
-        for key, direction in key_map.items():
-            if glfw.get_key(self.window, key) == GLFW_PRESS:
-                self.camera.process_keyboard(direction, delta_time, sprint) #
 
     def mouse_look_callback(self, window, xpos, ypos):
-        if not self.is_mouse_captured: return
-        w, h = glfw.get_window_size(window)
-        center_x, center_y = w / 2, h / 2
-        self.camera.process_mouse_movement(xpos - center_x, center_y - ypos) #
-        glfw.set_cursor_pos(window, center_x, center_y)
+        # If we just programmatically centered the cursor, ignore the first
+        # movement callback to avoid a large spurious delta. This prevents
+        # an immediate big jump when starting an orbit/pan.
+        if getattr(self, 'just_centered', False):
+            self.just_centered = False
+            # Update last cursor pos to the current coords and skip movement
+            self.last_cursor_pos = (xpos, ypos)
+            return
+        # If mouse is captured, keep FPS-look behavior, but allow right-button pan
+        if self.is_mouse_captured:
+            w, h = glfw.get_window_size(window)
+            center_x, center_y = w / 2, h / 2
+            # Middle mouse (wheel) press + drag -> PAN (move camera position)
+            if self.middle_button_down:
+                dx = xpos - center_x
+                dy = ypos - center_y
+                self.camera.pan(dx, dy)
+                glfw.set_cursor_pos(window, center_x, center_y)
+                return
+
+            # Right mouse press + drag -> ORBIT/ROTATE around target
+            if self.right_button_down:
+                dx = xpos - center_x
+                dy = ypos - center_y
+                # invert Y for a natural drag-to-rotate feel
+                self.camera.orbit(dx, dy)
+                glfw.set_cursor_pos(window, center_x, center_y)
+                return
+
+            # If no relevant button is pressed, do not rotate or pan the camera.
+            # This ensures movement/looking only happens while holding the configured buttons.
+            return
+
+        # If mouse is free, handle orbit/pan when middle button is down
+        if self.last_cursor_pos is None:
+            self.last_cursor_pos = (xpos, ypos)
+            return
+
+        lx, ly = self.last_cursor_pos
+        dx, dy = xpos - lx, ypos - ly
+        self.last_cursor_pos = (xpos, ypos)
+
+        if self.middle_button_down:
+            # Middle mouse (wheel) press + drag -> PAN (move camera position)
+            self.camera.pan(dx, dy)
+        elif self.right_button_down:
+            # Right-click drag -> ORBIT/ROTATE
+            self.camera.orbit(dx, dy)
 
     def scroll_callback(self, window, x_offset, y_offset):
-        if not self.is_mouse_captured or not self.placeable_blocks: return
+        # Use mouse wheel to zoom camera distance (always)
+        self.camera.zoom(y_offset)
+
+    def mouse_button_callback(self, window, button, action, mods):
+        # GLFW middle mouse button constant is 2 but use glfw to be safe
+        # Forward the event to the UI manager first so UI placement can occur
         try:
-            idx = self.placeable_blocks.index(self.active_block_type)
-            self.active_block_type = self.placeable_blocks[(idx - int(y_offset)) % len(self.placeable_blocks)]
-        except ValueError:
-            self.active_block_type = self.placeable_blocks[0]
+            if hasattr(self, 'ui_manager') and self.ui_manager:
+                # UIManager will ignore the event if ImGui wants the mouse
+                self.ui_manager.on_mouse_button(window, button, action, mods)
+        except Exception:
+            pass
+        if button == glfw.MOUSE_BUTTON_MIDDLE:
+            if action == glfw.PRESS:
+                self.middle_button_down = True
+                # Hide and lock the cursor to the window center while panning
+                w, h = glfw.get_window_size(self.window)
+                center_x, center_y = w / 2, h / 2
+                glfw.set_cursor_pos(self.window, center_x, center_y)
+                # Mark that we just centered the cursor so the next movement
+                # callback ignores a spurious large delta.
+                self.just_centered = True
+                glfw.set_input_mode(self.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED)
+                self.last_cursor_pos = (center_x, center_y)
+            elif action == glfw.RELEASE:
+                self.middle_button_down = False
+                # Restore visible cursor when done
+                glfw.set_input_mode(self.window, GLFW_CURSOR, GLFW_CURSOR_NORMAL)
+        elif button == glfw.MOUSE_BUTTON_RIGHT:
+            if action == glfw.PRESS:
+                self.right_button_down = True
+                # Hide and lock the cursor to the window center while orbiting
+                w, h = glfw.get_window_size(self.window)
+                center_x, center_y = w / 2, h / 2
+                glfw.set_cursor_pos(self.window, center_x, center_y)
+                # Ignore the first movement event after centering.
+                self.just_centered = True
+                glfw.set_input_mode(self.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED)
+                self.last_cursor_pos = (center_x, center_y)
+            elif action == glfw.RELEASE:
+                self.right_button_down = False
+                # Restore visible cursor when done
+                glfw.set_input_mode(self.window, GLFW_CURSOR, GLFW_CURSOR_NORMAL)
 
     def update_raycast(self):
-        if not self.is_mouse_captured:
+        # Don't run the world raycast if ImGui is capturing the mouse (e.g. UI interaction)
+        try:
+            io = imgui.get_io()  # type: ignore[attr-defined]
+            if io.want_capture_mouse:
+                self.hit_voxel_pos = None
+                return
+        except Exception:
+            # If imgui isn't available for some reason, continue.
+            pass
+
+        # Also skip raycast while the user is actively panning or orbiting the camera
+        # to avoid flickering/highlighting while moving the view.
+        if getattr(self, 'middle_button_down', False) or getattr(self, 'right_button_down', False):
             self.hit_voxel_pos = None
+            self.place_voxel_pos = None
+            self.hit_voxel_normal = None
             return
-            
-        ray = Raycast(self.scene.world, self.camera.position, self.camera.front)
+
+        # Compute ray direction using camera basis and cursor position.
+        # This uses the camera's rotation (front/right/up) and the current FOV/aspect
+        # so the ray matches what you see on screen.
+        w, h = glfw.get_window_size(self.window)
+        try:
+            mx, my = glfw.get_cursor_pos(self.window)
+        except Exception:
+            mx, my = w / 2.0, h / 2.0
+
+        if mx is None or my is None or mx != mx or my != my:
+            mx, my = w / 2.0, h / 2.0
+
+        # Convert to normalized device coords [-1,1]
+        ndc_x = (2.0 * mx) / float(w) - 1.0
+        ndc_y = 1.0 - (2.0 * my) / float(h)
+
+        # Camera basis
+        cam_front = np.array(self.camera.front, dtype=np.float64)
+        cam_right = np.array(self.camera.right, dtype=np.float64)
+        cam_up = np.array(self.camera.up, dtype=np.float64)
+
+        # Field of view in radians
+        fov_y = math.radians(75.0)
+        # aspect ratio based on window size (more correct for DPI)
+        aspect = float(w) / float(h) if h != 0 else SCREEN_WIDTH / SCREEN_HEIGHT
+
+        # Convert NDC to camera space direction components
+        # At the near plane, x_camera = ndc_x * tan(fov_x/2), y_camera = ndc_y * tan(fov_y/2)
+        tan_y = math.tan(fov_y / 2.0)
+        tan_x = tan_y * aspect
+
+        x_camera = ndc_x * tan_x
+        y_camera = ndc_y * tan_y
+
+        # Compose the world-space direction: forward + right * x + up * y
+        world_dir = cam_front + cam_right * x_camera + cam_up * y_camera
+        world_dir = np.array(world_dir, dtype=np.float32)
+        norm = np.linalg.norm(world_dir)
+        if norm == 0:
+            world_dir = np.array(self.camera.front, dtype=np.float32)
+        else:
+            world_dir = world_dir / norm
+
+        # Slightly offset origin forward to avoid self-intersection
+        origin = np.array(self.camera.position, dtype=np.float32) + world_dir * 0.001
+        ray = Raycast(self.scene.world, origin, world_dir)
         hit, place = ray.step_forward()
 
         if hit:

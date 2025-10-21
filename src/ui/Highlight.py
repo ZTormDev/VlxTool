@@ -13,11 +13,11 @@ from OpenGL.GL import (
 import numpy as np
 import ctypes
 import pyrr
-from src.Config import create_shader_program
+from src.utils.Config import create_shader_program
 
 class Highlight:
     def __init__(self):
-        program_folder = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
+        program_folder = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + "/"
         self.program = create_shader_program(program_folder + "shaders/highlight.vert", program_folder + "shaders/highlight.frag")
         
         vertices = np.array([-0.501, 0.501, 0.0, -0.501, -0.501, 0.0, 0.501, -0.501, 0.0, 0.501, 0.501, 0.0], dtype=np.float32)
