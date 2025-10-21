@@ -51,11 +51,20 @@ class UIManager:
                         self.app.action_history.record({'type':'set', 'pos':(x, y, z), 'prev':prev, 'new':new})
                         self.app.scene.world.set_voxel(x, y, z, new)
                     elif mode == 'erase':
-                        x, y, z = tuple(map(int, self.app.place_voxel_pos))
-                        prev = self.app.scene.world.get_voxel(x, y, z)
-                        new = 0
-                        self.app.action_history.record({'type':'set', 'pos':(x, y, z), 'prev':prev, 'new':new})
-                        self.app.scene.world.set_voxel(x, y, z, new)
+                        # Erase should remove the voxel the user is pointing at
+                        # (hit_voxel_pos). If for some reason hit_voxel_pos is
+                        # not available, fall back to place_voxel_pos.
+                        target = None
+                        if getattr(self.app, 'hit_voxel_pos', None):
+                            target = self.app.hit_voxel_pos
+                        elif getattr(self.app, 'place_voxel_pos', None):
+                            target = self.app.place_voxel_pos
+                        if target:
+                            x, y, z = tuple(map(int, target))
+                            prev = self.app.scene.world.get_voxel(x, y, z)
+                            new = 0
+                            self.app.action_history.record({'type':'set', 'pos':(x, y, z), 'prev':prev, 'new':new})
+                            self.app.scene.world.set_voxel(x, y, z, new)
                     elif mode == 'paint':
                         if self.app.hit_voxel_pos and self.app.scene.world.is_solid(*self.app.hit_voxel_pos):
                             x, y, z = tuple(map(int, self.app.hit_voxel_pos))
