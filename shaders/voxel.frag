@@ -21,13 +21,16 @@ void main()
     }
 
     vec3 object_color = u_block_palette[v_block_type];
-    
+
     vec3 norm = normalize(f_normal);
-    vec3 ambient = vec3(0.3, 0.4, 0.5);
     float diff = max(dot(norm, -u_sun_direction), 0.0);
     vec3 diffuse = diff * u_sun_color;
-    
+
+    // Aplicar ambient siempre, pero menos si recibe luz directa
+    float ambient_strength = (diff == 0.0) ? 0.5 : 0.0;
+    vec3 ambient = ambient_strength * u_sun_color;
+
     vec3 final_lighting = (ambient + diffuse) * object_color * f_ao;
-    
+
     f_color = vec4(final_lighting, 1.0);
 }

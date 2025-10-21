@@ -2,6 +2,7 @@
 import re
 from enum import IntEnum
 
+
 def parse_block_types_hpp(filepath):
     """
     Lee un archivo BlockTypes.hpp y extrae los tipos de bloque y sus colores.
@@ -15,42 +16,52 @@ def parse_block_types_hpp(filepath):
         return None, None
 
     # --- 1. Extraer nombres de bloques del enum ---
-    enum_pattern = re.compile(r'enum class BlockType.*?\{(.*?)\};', re.DOTALL)
+    enum_pattern = re.compile(r'enum\s+class\s+BlockType[^\{]*\{(.*?)\};', re.DOTALL)
     enum_match = enum_pattern.search(content)
-    
+
     if not enum_match:
         print("ERROR: No se pudo encontrar 'enum class BlockType' en el archivo.")
         return None, None
 
-    block_names = {}
-    # Limpiamos y extraemos los nombres y sus valores
-    for line in enum_match.group(1).split(','):
-        line = line.strip()
-        if not line or '//' in line:
-            continue
-        parts = line.split('=')
-        name = parts[0].strip()
-        if len(parts) > 1:
-            value = int(parts[1].strip())
-        else:
-            # Si no hay valor explícito, se autoincrementa
-            value = max(block_names.values()) + 1 if block_names else 0
-        block_names[name] = value
+    body = enum_match.group(1)
 
-    # Creamos el Enum dinámicamente
+    # Buscamos entradas del enum en forma: Name [= N] ,
+    entry_pattern = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)\s*(?:=\s*([0-9]+))?\s*(?:,|$)')
+    block_names = {}
+    next_value = 0
+    for m in entry_pattern.finditer(body):
+        name = m.group(1)
+        val_str = m.group(2)
+        if val_str is not None:
+            val = int(val_str)
+            next_value = val + 1
+        else:
+            val = next_value
+            next_value += 1
+        block_names[name] = val
+
+    if not block_names:
+        print("ERROR: No se pudieron extraer nombres de bloque del enum.")
+        return None, None
+
     GeneratedBlockType = IntEnum('BlockType', block_names)
 
     # --- 2. Extraer colores del struct ---
-    color_pattern = re.compile(r'case BlockType::(.*?):.*?glm::vec3\((.*?)\)', re.DOTALL)
-    color_matches = color_pattern.findall(content)
-
+    # Iteramos por cada "case BlockType::Name:" y buscamos el primer glm::vec3(...) después de él
     block_colors = {}
-    for name, color_str in color_matches:
-        name = name.strip()
-        # Convertimos "1.0f, 0.827f, 0.455f" a una tupla de floats (1.0, 0.827, 0.455)
+    case_pattern = re.compile(r'case\s+BlockType::([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*?)((?=case\s+BlockType::)|$)', re.DOTALL)
+    vec3_pattern = re.compile(r'glm::vec3\s*\(([^\)]*)\)')
+
+    for case_match in case_pattern.finditer(content):
+        name = case_match.group(1).strip()
+        body_after = case_match.group(2)
+        vecs = vec3_pattern.findall(body_after)
+        if not vecs:
+            continue
+        # Take the first vec3 (light color)
+        color_str = vecs[0]
         try:
             color_values = tuple(float(c.replace('f', '')) for c in color_str.split(','))
-            # Usamos el enum que acabamos de crear para las claves del diccionario
             block_enum_member = GeneratedBlockType[name]
             block_colors[block_enum_member] = color_values
         except (ValueError, KeyError) as e:

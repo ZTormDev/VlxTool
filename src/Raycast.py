@@ -136,19 +136,5 @@ class Raycast:
                     hit_pos = (ix, iy, int(world_z))
 
             return hit_pos, place_pos
-
-        # --- FIN DE LA CORRECCIÓN ---
-        # If we reached here no plane candidate was valid. Optionally print debug info.
-        if hasattr(self, 'debug') and self.debug:
-            try:
-                print("[Raycast DEBUG] origin=", origin, "dir=", dir, "max_distance=", self.max_distance)
-                print("[Raycast DEBUG] world bounds: x=0..", world_x, "y=0..", world_y, "z=0..", world_z)
-                print("[Raycast DEBUG] candidates tested:")
-                for axis, coord in planes:
-                    r = test_plane(axis, coord)
-                    print(f"  plane axis={axis} coord={coord} -> {r}")
-            except Exception:
-                pass
-
         # Si no hay colisión ni intersección con el volumen del grid, no devolver nada.
         return None, None

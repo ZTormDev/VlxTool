@@ -69,9 +69,7 @@ class World:
         elif lz == self.chunk_size - 1:
             neighbor_chunk_pos = (chunk_pos[0], chunk_pos[1] + 1)
             if neighbor_chunk_pos in self.chunks: self.dirty_chunks.add(self.chunks[neighbor_chunk_pos])
-            
-        print(f"Set voxel at world ({x}, {y}, {z}) to {block_type.name}")
-
+        
     def update_dirty_chunks(self):
         """ Reconstruye la malla de todos los chunks marcados como 'sucios'. """
         # Convertimos a lista para evitar problemas si el set se modifica durante la iteración
